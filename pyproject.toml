@@ -1,0 +1,20 @@
+[build-system]
+requires = ['setuptools>=61']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'pytest-abort-plugin'
+version = '0.1.0'
+description = 'Pytest plugin + helpers for attributing hard crashes (SIGSEGV/SIGABRT) to the last running test and keeping ROCm/JAX HTML reports mergeable.'
+readme = 'README.md'
+requires-python = '>=3.8'
+dependencies = [
+  'pytest>=7.0',
+]
+license = { file = 'LICENSE' }
+
+[project.entry-points.pytest11]
+pytest_abort_plugin = 'pytest_abort_plugin.plugin'
+
+[tool.setuptools]
+packages = ['pytest_abort_plugin']
