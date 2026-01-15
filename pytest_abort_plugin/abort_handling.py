@@ -21,7 +21,13 @@ from typing import Any, Dict, Optional, Tuple
 
 from .crash_file import check_for_crash_file
 
-ENV_CRASHED_TESTS_LOG = "JAX_ROCM_CRASHED_TESTS_LOG"
+# Generic env vars
+ENV_CRASHED_TESTS_LOG = "PYTEST_ABORT_CRASHED_TESTS_LOG"
+
+try:
+    import fcntl  # type: ignore
+except ImportError:  # pragma: no cover
+    fcntl = None  # type: ignore
 
 
 def sanitize_for_json(text: Optional[str]) -> Optional[str]:
@@ -113,8 +119,23 @@ def append_crash_to_jsonl(crash_log_file: str, crash_info: Dict[str, Any], *, so
     payload["logged_at"] = datetime.now().isoformat()
 
     os.makedirs(os.path.dirname(crash_log_file) or ".", exist_ok=True)
+    line = json.dumps(payload, ensure_ascii=False) + "\n"
     with open(crash_log_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        # Best-effort cross-process safety (Linux): lock the file while appending.
+        if fcntl is not None:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            except OSError:
+                pass
+        try:
+            f.write(line)
+            f.flush()
+        finally:
+            if fcntl is not None:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    pass
 
 
 def append_abort_to_json(json_file: str, testfile: str, abort_info: Dict[str, Any]) -> None:

@@ -1,10 +1,10 @@
 """Pytest plugin: write a 'last running test' JSON file for crash attribution.
 
-The outer runners (`run_single_gpu.py` / `run_multi_gpu.py`) set:
-  - JAX_ROCM_LAST_RUNNING_FILE: absolute path to write JSON into
+Callers can set:
+  - PYTEST_ABORT_LAST_RUNNING_FILE: absolute path to write JSON into
 
 If pytest is terminated by a hard crash (segfault/abort), the file remains
-with status="running". The runners parse it to report the crashed test.
+with status="running". An outer process can parse it to report the crashed test.
 """
 
 from __future__ import annotations
@@ -20,11 +20,12 @@ from .abort_handling import ENV_CRASHED_TESTS_LOG, append_crash_to_jsonl
 from .crash_file import check_for_crash_file
 
 
-ENV_LAST_RUNNING_FILE = "JAX_ROCM_LAST_RUNNING_FILE"
-ENV_LAST_RUNNING_DIR = "JAX_ROCM_LAST_RUNNING_DIR"
+# Generic env vars
+ENV_LAST_RUNNING_FILE = "PYTEST_ABORT_LAST_RUNNING_FILE"
+ENV_LAST_RUNNING_DIR = "PYTEST_ABORT_LAST_RUNNING_DIR"
 
-OPT_LAST_RUNNING_FILE = "rocm_last_running_file"
-OPT_LAST_RUNNING_DIR = "rocm_last_running_dir"
+OPT_LAST_RUNNING_FILE = "abort_last_running_file"
+OPT_LAST_RUNNING_DIR = "abort_last_running_dir"
 
 
 def _atomic_write_json(path: str, payload: Dict[str, Any]) -> None:
@@ -43,7 +44,7 @@ def _get_last_running_file(config: pytest.Config) -> Optional[str]:
         if injected:
             return injected
 
-    # Prefer env var so runners don't need to modify pytest args.
+    # Prefer env var so callers don't need to modify pytest args.
     p = os.environ.get(ENV_LAST_RUNNING_FILE)
     if p:
         return p
@@ -67,15 +68,15 @@ def _get_last_running_file(config: pytest.Config) -> Optional[str]:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    group = parser.getgroup("rocm-abort-detector")
+    group = parser.getgroup("abort-detector")
     group.addoption(
-        "--rocm-last-running-file",
+        "--last-running-file",
         dest=OPT_LAST_RUNNING_FILE,
         default=None,
         help="Path to write last-running-test JSON for crash attribution.",
     )
     group.addoption(
-        "--rocm-last-running-dir",
+        "--last-running-dir",
         dest=OPT_LAST_RUNNING_DIR,
         default=None,
         help="Directory to write per-worker last-running JSON files (xdist-safe).",

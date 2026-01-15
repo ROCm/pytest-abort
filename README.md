@@ -66,15 +66,20 @@ python3 -m pip install ./dist/*.whl
 Recommended (env var):
 
 ```bash
-JAX_ROCM_LAST_RUNNING_FILE=/tmp/last_running.json \
-python3 -m pytest -p pytest_abort_plugin.plugin -q tests/test_something.py
+PYTEST_ABORT_LAST_RUNNING_FILE=/tmp/last_running.json \
+python3 -m pytest -q tests/test_something.py
 ```
+
+Note:
+- If `pytest-abort-plugin` is **installed** (editable or wheel), pytest auto-loads it via the `pytest11` entry point, so you **do not** need `-p pytest_abort_plugin.plugin`.
+- Only use `-p pytest_abort_plugin.plugin` if the plugin is **not installed** and you are loading it purely via `PYTHONPATH`.
+- Don’t use `-p pytest_abort_plugin.plugin` when it’s already auto-loaded, or pytest will error with “Plugin already registered”.
 
 Optional CLI override:
 
 ```bash
-python3 -m pytest -p pytest_abort_plugin.plugin \
-  --rocm-last-running-file /tmp/last_running.json \
+python3 -m pytest \
+  --last-running-file /tmp/last_running.json \
   -q tests/test_something.py
 ```
 
@@ -82,29 +87,30 @@ python3 -m pytest -p pytest_abort_plugin.plugin \
 
 You can also write a shared **crashed tests log** (JSONL: one JSON object per line).
 
-- Set `JAX_ROCM_CRASHED_TESTS_LOG=/path/to/crashed_tests.jsonl`
-- For `pytest -n` (xdist), also set `JAX_ROCM_LAST_RUNNING_DIR=/path/to/dir` (so each worker writes its own marker file).
+- Set `PYTEST_ABORT_CRASHED_TESTS_LOG=/path/to/crashed_tests.jsonl`
+- For `pytest -n` (xdist), also set `PYTEST_ABORT_LAST_RUNNING_DIR=/path/to/dir` (so each worker writes its own marker file).
 
 Example:
 
 ```bash
-export JAX_ROCM_LAST_RUNNING_DIR=/tmp/last_running
-export JAX_ROCM_CRASHED_TESTS_LOG=/tmp/crashed_tests.jsonl
+export PYTEST_ABORT_LAST_RUNNING_DIR=/tmp/last_running
+export PYTEST_ABORT_CRASHED_TESTS_LOG=/tmp/crashed_tests.jsonl
 
-pytest -p pytest_abort_plugin.plugin -n 8 tests
+pytest -n 8 tests
 ```
 
 Notes:
 - In xdist, the **master process** appends to the crashed-tests log when a worker goes down.
-- In runner flows (like `run_single_gpu.py`), `handle_abort(...)` appends to the crashed-tests log if `JAX_ROCM_CRASHED_TESTS_LOG` is set.
+- In runner flows (like `run_single_gpu.py`), `handle_abort(...)` appends to the crashed-tests log if `PYTEST_ABORT_CRASHED_TESTS_LOG` is set.
+
 
 ## How rocm-jax uses it
 
 ### `run_single_gpu.py`
 
 - Adds the `pytest-abort-plugin` repo directory to `PYTHONPATH` for the pytest subprocess
-- Enables the plugin with `-p pytest_abort_plugin.plugin`
-- Sets `JAX_ROCM_LAST_RUNNING_FILE` per test-file run (`logs/*_last_running.json`)
+- Enables the plugin via the installed `pytest11` entry point (no `-p` needed)
+- Sets `PYTEST_ABORT_LAST_RUNNING_FILE` per test-file run (`logs/*_last_running.json`)
 - On crash: re-runs remaining tests in the same file using `--deselect <crashed-nodeid>`
 - Appends crash info into `*_log.json` + `*_log.html` using `pytest_abort_plugin.abort_handling.handle_abort(...)`
 - Sanitizes per-file HTML jsonblobs before merging:
@@ -136,15 +142,14 @@ html_log = "logs/example_log.html"
 last_running = "logs/example_last_running.json"
 
 env = os.environ.copy()
-env["JAX_ROCM_LAST_RUNNING_FILE"] = os.path.abspath(last_running)
+env["PYTEST_ABORT_LAST_RUNNING_FILE"] = os.path.abspath(last_running)
 
 subprocess.run(
     [
         "python3",
         "-m",
         "pytest",
-        "-p",
-        "pytest_abort_plugin.plugin",
+        # Plugin is auto-loaded via pytest11 entry point when installed.
         "--json-report",
         f"--json-report-file={json_log}",
         f"--html={html_log}",
