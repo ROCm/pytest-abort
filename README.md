@@ -103,6 +103,20 @@ Notes:
 - In xdist, the **master process** appends to the crashed-tests log when a worker goes down.
 - In runner flows (like `run_single_gpu.py`), `handle_abort(...)` appends to the crashed-tests log if `PYTEST_ABORT_CRASHED_TESTS_LOG` is set.
 
+## Crash recovery for xdist runs (optional helper)
+
+If you want a “crash recovery” loop for `pytest -n ...`, you can use the included outer-process wrapper:
+
+```bash
+pytest-abort-retry --max-runs 5 --clear-crash-log -- \
+  pytest -n 8 --max-worker-restart=50 --tb=short --maxfail=20 jax/tests jax/examples
+```
+
+This will:
+- run pytest
+- read `PYTEST_ABORT_CRASHED_TESTS_LOG`
+- re-run pytest with `--deselect=<nodeid>` for crashed nodeids until stable (or `--max-runs`).
+
 
 ## How rocm-jax uses it
 

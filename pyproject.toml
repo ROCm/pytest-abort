@@ -13,6 +13,9 @@ dependencies = [
 ]
 license = { file = 'LICENSE' }
 
+[project.scripts]
+pytest-abort-retry = 'pytest_abort_plugin.retry:main'
+
 [project.entry-points.pytest11]
 pytest_abort_plugin = 'pytest_abort_plugin.plugin'
 
