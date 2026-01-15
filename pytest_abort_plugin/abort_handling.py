@@ -21,6 +21,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from .crash_file import check_for_crash_file
 
+ENV_CRASHED_TESTS_LOG = "JAX_ROCM_CRASHED_TESTS_LOG"
+
 
 def sanitize_for_json(text: Optional[str]) -> Optional[str]:
     """Remove control characters that break JSON parsing, preserving \\n/\\r/\\t."""
@@ -102,6 +104,17 @@ def sanitize_all_html_jsonblobs(log_dir: str) -> Tuple[int, int, int]:
         except Exception:  # pylint: disable=broad-exception-caught
             failed += 1
     return modified, len(html_files), failed
+
+
+def append_crash_to_jsonl(crash_log_file: str, crash_info: Dict[str, Any], *, source: str) -> None:
+    """Append a crash record to a JSONL file (one JSON object per line)."""
+    payload = dict(crash_info)
+    payload["source"] = source
+    payload["logged_at"] = datetime.now().isoformat()
+
+    os.makedirs(os.path.dirname(crash_log_file) or ".", exist_ok=True)
+    with open(crash_log_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
 def append_abort_to_json(json_file: str, testfile: str, abort_info: Dict[str, Any]) -> None:
@@ -564,6 +577,9 @@ def handle_abort(
         return False
 
     try:
+        crash_log_file = os.environ.get(ENV_CRASHED_TESTS_LOG)
+        if crash_log_file:
+            append_crash_to_jsonl(crash_log_file, crash_info, source="runner")
         append_abort_to_json(json_file, testfile, crash_info)
         append_abort_to_html(html_file, testfile, crash_info)
         return True

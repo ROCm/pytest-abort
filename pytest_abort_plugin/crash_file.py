@@ -49,7 +49,7 @@ def _extract_test_class(nodeid: str) -> str:
     return "UnknownClass"
 
 
-def check_for_crash_file(last_running_file: str) -> Optional[Dict[str, Any]]:
+def check_for_crash_file(last_running_file: str, *, min_duration: float = 0.1) -> Optional[Dict[str, Any]]:
     """Return crash info dict if crash detected, otherwise None.
 
     A crash is detected when the last_running_file exists and contains JSON with
@@ -70,7 +70,7 @@ def check_for_crash_file(last_running_file: str) -> Optional[Dict[str, Any]]:
         duration = (datetime.now() - start_time).total_seconds()
 
         # Avoid false positives from extremely short runtimes.
-        if duration < 0.1:
+        if duration < min_duration:
             return None
 
         test_identifier = crash_data.get(
