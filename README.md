@@ -42,6 +42,12 @@ Editable install:
 python3 -m pip install -e .
 ```
 
+If you plan to use `-n` (parallel execution) and/or per-test timeouts, you likely also want:
+
+```bash
+python3 -m pip install -U pytest-xdist pytest-timeout
+```
+
 ## Build a wheel
 
 Build the wheel from the repo root:
@@ -112,10 +118,23 @@ pytest-abort-retry --max-runs 5 --clear-crash-log -- \
   pytest -n 8 --max-worker-restart=50 --tb=short --maxfail=20 jax/tests jax/examples
 ```
 
+Per-test timeout example (requires `pytest-timeout`):
+
+```bash
+pytest-abort-retry --max-runs 5 --clear-crash-log -- \
+  pytest -n 8 --max-worker-restart=50 --tb=short --maxfail=20 \
+    --timeout=600 --timeout-method=thread \
+    jax/tests jax/examples
+```
+
 This will:
 - run pytest
 - read `PYTEST_ABORT_CRASHED_TESTS_LOG`
 - re-run pytest with `--deselect=<nodeid>` for crashed nodeids until stable (or `--max-runs`).
+
+Note:
+- The wrapper supports the standard `... -- pytest ...` form.
+- To avoid “wrong pytest binary / wrong environment” problems (missing `-n`, missing `--timeout`, etc.), the wrapper rewrites a leading `pytest ...` to run as `python -m pytest ...` using the wrapper’s interpreter.
 
 
 ## How rocm-jax uses it
