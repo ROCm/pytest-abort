@@ -92,6 +92,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.pytest_cmd and args.pytest_cmd[0] == "--":
         args.pytest_cmd = args.pytest_cmd[1:]
 
+    # Avoid "wrong pytest binary" problems by defaulting to this interpreter's pytest.
+    # If user passed "pytest ...", rewrite to: "<sys.executable> -m pytest ..."
+    if args.pytest_cmd and args.pytest_cmd[0] == "pytest":
+        args.pytest_cmd = [sys.executable, "-m", "pytest", *args.pytest_cmd[1:]]
+
     crash_log = Path(args.crash_log) if args.crash_log else None
     if crash_log is None:
         print("ERROR: --crash-log not set and PYTEST_ABORT_CRASHED_TESTS_LOG is empty")
