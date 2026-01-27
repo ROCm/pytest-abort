@@ -60,6 +60,57 @@ def _sanitize_obj_for_html_jsonblob(obj):
     return obj
 
 
+def _escape_control_chars_in_json_strings(json_text: str) -> str:
+    """Escape raw control chars that appear *inside* JSON string literals.
+
+    This repairs malformed JSON where a string contains literal newlines/tabs/etc
+    (e.g. JSONDecodeError: Invalid control character). We only escape when we're
+    inside a JSON string (between quotes), so whitespace between tokens is left
+    untouched.
+    """
+    out = []
+    in_string = False
+    escaped = False
+
+    for ch in json_text:
+        if not in_string:
+            out.append(ch)
+            if ch == '"':
+                in_string = True
+            continue
+
+        # Inside a JSON string literal.
+        if escaped:
+            out.append(ch)
+            escaped = False
+            continue
+
+        if ch == "\\":
+            out.append(ch)
+            escaped = True
+            continue
+
+        if ch == '"':
+            out.append(ch)
+            in_string = False
+            continue
+
+        code = ord(ch)
+        if code < 0x20:
+            if ch == "\n":
+                out.append("\\n")
+            elif ch == "\r":
+                out.append("\\r")
+            elif ch == "\t":
+                out.append("\\t")
+            else:
+                out.append(f"\\u{code:04x}")
+        else:
+            out.append(ch)
+
+    return "".join(out)
+
+
 def sanitize_html_file_jsonblob(html_path: str) -> bool:
     """Parse + sanitize a single pytest-html report's data-jsonblob in place.
 
@@ -71,20 +122,62 @@ def sanitize_html_file_jsonblob(html_path: str) -> bool:
     except OSError:
         return False
 
+    # Fast skip for files without a jsonblob.
+    if 'data-jsonblob="' not in html_content and "data-jsonblob='" not in html_content:
+        return False
+
+    # Most pytest-html reports use a double-quoted attribute.
     m = re.search(r'data-jsonblob="([^"]*)"', html_content, flags=re.DOTALL)
+    attr_quote = '"'
+    if not m:
+        # Be tolerant: handle single-quoted variants.
+        m = re.search(r"data-jsonblob='([^']*)'", html_content, flags=re.DOTALL)
+        attr_quote = "'"
     if not m:
         return False
 
     raw_attr = m.group(1)
+    json_text = html.unescape(raw_attr)
+
+    # If this jsonblob doesn't contain anything we might transform, avoid the
+    # expensive json.loads + deep-walk. (We still repair malformed blobs below.)
+    maybe_needs_sanitize = (
+        "\n" in json_text
+        or "\r" in json_text
+        or "\t" in json_text
+        or "\\n" in json_text
+        or "\\r" in json_text
+        or "\\t" in json_text
+        or "\\u000" in json_text
+        or "\\u001" in json_text
+    )
+
     try:
-        data = json.loads(html.unescape(raw_attr))
-    except (json.JSONDecodeError, ValueError):
+        data = json.loads(json_text) if maybe_needs_sanitize else None
+    except (json.JSONDecodeError, ValueError) as exc:
+        # Repair common corruption: literal control chars inside JSON strings.
+        fixed_text = _escape_control_chars_in_json_strings(json_text)
+        try:
+            data = json.loads(fixed_text)
+        except (json.JSONDecodeError, ValueError) as exc2:
+            raise ValueError(
+                f"Could not parse data-jsonblob in {html_path}: {exc2}"
+            ) from exc2
+
+    if data is None:
+        # No likely transformations needed and blob looked syntactically fine.
         return False
 
     sanitized = _sanitize_obj_for_html_jsonblob(data)
-    new_attr = html.escape(json.dumps(sanitized, ensure_ascii=False), quote=True)
+    dumped = json.dumps(sanitized, ensure_ascii=False)
+    new_attr = html.escape(dumped, quote=True)
     if new_attr == raw_attr:
         return False
+
+    # Preserve the original quote type used in the attribute.
+    if attr_quote == "'":
+        # html.escape(..., quote=True) escapes both " and ', so safe.
+        pass
 
     new_html = html_content[: m.start(1)] + new_attr + html_content[m.end(1) :]
     try:
@@ -341,8 +434,13 @@ def _update_html_json_data(html_content: str, testfile: str, abort_info: Dict[st
         return html_content
 
     try:
-        json_str = html.unescape(match.group(1))
-        existing_json = json.loads(json_str)
+        raw_attr = match.group(1)
+        json_str = html.unescape(raw_attr)
+        try:
+            existing_json = json.loads(json_str)
+        except (json.JSONDecodeError, ValueError):
+            # Repair malformed jsonblobs produced by crashes/merges.
+            existing_json = json.loads(_escape_control_chars_in_json_strings(json_str))
 
         if "tests" not in existing_json or not isinstance(existing_json.get("tests"), dict):
             existing_json["tests"] = {}
@@ -392,11 +490,15 @@ def _update_html_json_data(html_content: str, testfile: str, abort_info: Dict[st
         }
         existing_json["tests"][test_id] = new_test
 
-        updated_json_str = html.escape(json.dumps(existing_json, ensure_ascii=False), quote=True)
-        html_content = re.sub(
-            jsonblob_pattern,
-            f'data-jsonblob="{updated_json_str}"',
-            html_content,
+        updated_json_str = html.escape(
+            json.dumps(existing_json, ensure_ascii=False), quote=True
+        )
+        # Avoid regex replacement pitfalls with backslashes in the json blob:
+        # do a single targeted replacement of the attribute content.
+        html_content = (
+            html_content[: match.start(1)]
+            + updated_json_str
+            + html_content[match.end(1) :]
         )
     except (json.JSONDecodeError, ValueError, TypeError) as ex:
         print(f"Warning: Could not update JSON data in HTML file: {ex}")
