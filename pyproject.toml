@@ -14,10 +14,10 @@ dependencies = [
 license = { file = 'LICENSE' }
 
 [project.scripts]
-pytest-abort-retry = 'pytest_abort_plugin.retry:main'
+pytest-abort-retry = 'pytest_abort.retry:main'
 
 [project.entry-points.pytest11]
-pytest_abort = 'pytest_abort_plugin.plugin'
+pytest_abort = 'pytest_abort.plugin'
 
 [tool.setuptools]
-packages = ['pytest_abort_plugin']
+packages = ['pytest_abort']

@@ -4,15 +4,15 @@
 
 ## What this repo contains
 
-- **Pytest plugin**: `pytest_abort_plugin.plugin`
+- **Pytest plugin**: `pytest_abort.plugin`
   - Writes a JSON “last-running test” marker file before each test starts.
   - Deletes the marker file on normal test completion.
   - If pytest hard-crashes, cleanup never runs and the marker file remains with `status="running"`.
 
-- **Crash marker parser**: `pytest_abort_plugin.crash_file`
+- **Crash marker parser**: `pytest_abort.crash_file`
   - `check_for_crash_file(path) -> dict | None`
 
-- **Runner helpers (library module)**: `pytest_abort_plugin.abort_handling`
+- **Runner helpers (library module)**: `pytest_abort.abort_handling`
   - `handle_abort(json_file, html_file, last_running_file, testfile, crash_info=None) -> bool`
   - `append_abort_to_json(...)`, `append_abort_to_html(...)`
   - `sanitize_html_file_jsonblob(path)`, `sanitize_all_html_jsonblobs(log_dir)`
@@ -146,7 +146,7 @@ Note:
 - Enables the plugin via the installed `pytest11` entry point (no `-p` needed)
 - Sets `PYTEST_ABORT_LAST_RUNNING_FILE` per test-file run (`logs/*_last_running.json`)
 - On crash: re-runs remaining tests in the same file using `--deselect <crashed-nodeid>`
-- Appends crash info into `*_log.json` + `*_log.html` using `pytest_abort_plugin.abort_handling.handle_abort(...)`
+- Appends crash info into `*_log.json` + `*_log.html` using `pytest_abort.abort_handling.handle_abort(...)`
 - Sanitizes per-file HTML jsonblobs before merging:
   - `sanitize_all_html_jsonblobs("./logs")` then `pytest_html_merger`
 
@@ -161,7 +161,7 @@ Hard crashes can prevent `pytest-html` / `pytest-json-report` from finishing the
 
 - Run pytest with `--html=...` and `--json-report-file=...` (best-effort)
 - Detect a hard crash via the last-running marker file
-- Call `pytest_abort_plugin.abort_handling.handle_abort(...)` **from the runner process** to ensure the per-testfile `*_log.json` and `*_log.html` exist and contain a synthetic “crashed” test entry
+- Call `pytest_abort.abort_handling.handle_abort(...)` **from the runner process** to ensure the per-testfile `*_log.json` and `*_log.html` exist and contain a synthetic “crashed” test entry
 
 Minimal example:
 
@@ -169,7 +169,7 @@ Minimal example:
 import os
 import subprocess
 
-from pytest_abort_plugin.abort_handling import handle_abort, sanitize_all_html_jsonblobs
+from pytest_abort.abort_handling import handle_abort, sanitize_all_html_jsonblobs
 
 json_log = "logs/example_log.json"
 html_log = "logs/example_log.html"
