@@ -1,6 +1,6 @@
-# pytest-abort-plugin
+# pytest-abort
 
-`pytest-abort-plugin` is a pytest plugin + helper library to **attribute hard crashes (SIGSEGV/SIGABRT) to the last running test** and to keep pytest-html reports **mergeable and renderable** by sanitizing `data-jsonblob` payloads before `pytest_html_merger` runs.
+`pytest-abort` is a pytest plugin + helper library to **attribute hard crashes (SIGSEGV/SIGABRT) to the last running test** and to keep pytest-html reports **mergeable and renderable** by sanitizing `data-jsonblob` payloads before `pytest_html_merger` runs.
 
 ## What this repo contains
 
@@ -59,7 +59,7 @@ python3 -m build
 
 The wheel is produced under:
 
-- `./dist/` (for example: `./dist/pytest_abort_plugin-0.1.0-py3-none-any.whl`)
+- `./dist/` (for example: `./dist/pytest_abort-0.1.0-py3-none-any.whl`)
 
 Install the wheel:
 
@@ -77,9 +77,10 @@ python3 -m pytest -q tests/test_something.py
 ```
 
 Note:
-- If `pytest-abort-plugin` is **installed** (editable or wheel), pytest auto-loads it via the `pytest11` entry point, so you **do not** need `-p pytest_abort_plugin.plugin`.
-- Only use `-p pytest_abort_plugin.plugin` if the plugin is **not installed** and you are loading it purely via `PYTHONPATH`.
-- Don’t use `-p pytest_abort_plugin.plugin` when it’s already auto-loaded, or pytest will error with “Plugin already registered”.
+- If `pytest-abort` is **installed** (editable or wheel), pytest auto-loads it via the `pytest11` entry point, so you **do not** need `-p ...`.
+- If the plugin is **installed** and you want to load it explicitly anyway, use `-p pytest_abort`.
+- If the plugin is **not installed** and you’re loading it via `PYTHONPATH` only, use `-p pytest_abort.plugin`.
+- Don’t use `-p ...` when it’s already auto-loaded, or pytest will error with “Plugin already registered”.
 
 Optional CLI override:
 
@@ -141,7 +142,7 @@ Note:
 
 ### `run_single_gpu.py`
 
-- Adds the `pytest-abort-plugin` repo directory to `PYTHONPATH` for the pytest subprocess
+- Adds the `pytest-abort` repo directory to `PYTHONPATH` for the pytest subprocess
 - Enables the plugin via the installed `pytest11` entry point (no `-p` needed)
 - Sets `PYTEST_ABORT_LAST_RUNNING_FILE` per test-file run (`logs/*_last_running.json`)
 - On crash: re-runs remaining tests in the same file using `--deselect <crashed-nodeid>`
