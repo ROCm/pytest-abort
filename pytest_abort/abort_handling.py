@@ -236,12 +236,23 @@ def append_abort_to_json(json_file: str, testfile: str, abort_info: Dict[str, An
     test_identifier = abort_info["test_name"]
     test_class = abort_info.get("test_class", "UnknownClass")
 
-    if "::" in test_identifier and test_identifier.startswith("tests/"):
-        test_nodeid = test_identifier
-    elif "::" in test_identifier:
-        test_nodeid = f"tests/{testfile}.py::{test_identifier}"
+    # Preserve the original pytest nodeid when we have it, so crash-attribution
+    # ("last running") nodeids match what we synthesize into JSON/HTML reports.
+    #
+    # Examples we want to preserve:
+    # - "jax/tests/foo_test.py::test_bar"
+    # - "tests/foo_test.py::TestCls::test_bar"
+    # - "foo_test.py::test_bar"
+    if "::" in test_identifier:
+        left = test_identifier.split("::", 1)[0]
+        if left.endswith(".py"):
+            test_nodeid = test_identifier
+        else:
+            # Best-effort: only have a function/class name, anchor to the file
+            # we were running (without hardcoding a tests root).
+            test_nodeid = f"{testfile}.py::{test_identifier}"
     else:
-        test_nodeid = f"tests/{testfile}.py::{test_identifier}"
+        test_nodeid = f"{testfile}.py::{test_identifier}"
 
     abort_reason_clean = abort_info.get("reason", "Unknown abort reason") or ""
     abort_reason_clean = "".join(
@@ -346,12 +357,14 @@ def _create_abort_row_html(testfile: str, abort_info: Dict[str, Any]) -> str:
     test_identifier = abort_info["test_name"]
     test_class = abort_info.get("test_class", "UnknownClass")
 
-    if "::" in test_identifier and test_identifier.startswith("tests/"):
-        display_name = test_identifier
-    elif "::" in test_identifier:
-        display_name = f"tests/{testfile}.py::{test_identifier}"
+    if "::" in test_identifier:
+        left = test_identifier.split("::", 1)[0]
+        if left.endswith(".py"):
+            display_name = test_identifier
+        else:
+            display_name = f"{testfile}.py::{test_identifier}"
     else:
-        display_name = f"tests/{testfile}.py::{test_identifier}"
+        display_name = f"{testfile}.py::{test_identifier}"
 
     duration = float(abort_info.get("duration", 0) or 0)
     abort_time = abort_info.get("abort_time", "")
