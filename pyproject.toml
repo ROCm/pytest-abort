@@ -5,13 +5,30 @@ build-backend = 'setuptools.build_meta'
 [project]
 name = 'pytest-abort'
 version = '0.1.0'
-description = 'Pytest plugin + helpers for attributing hard crashes (SIGSEGV/SIGABRT) to the last running test and keeping ROCm/JAX HTML reports mergeable.'
+description = 'Pytest plugin + helpers for attributing hard crashes (SIGSEGV/SIGABRT) to the last running test and keeping pytest-html reports mergeable.'
 readme = 'README.md'
 requires-python = '>=3.8'
 dependencies = [
   'pytest>=7.0',
 ]
 license = { file = 'LICENSE' }
+classifiers = [
+  'Development Status :: 3 - Alpha',
+  'Framework :: Pytest',
+  'Intended Audience :: Developers',
+  'License :: OSI Approved :: Apache Software License',
+  'Programming Language :: Python :: 3',
+  'Programming Language :: Python :: 3 :: Only',
+  'Topic :: Software Development :: Testing',
+]
+keywords = [
+  'pytest',
+  'plugin',
+  'crash',
+  'segfault',
+  'sigabrt',
+  'reporting',
+]
 
 [project.scripts]
 pytest-abort-retry = 'pytest_abort.retry:main'

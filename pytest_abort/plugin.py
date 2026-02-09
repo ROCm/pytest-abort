@@ -83,7 +83,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
-@pytest.hookimpl(tryfirst=True)
+@pytest.hookimpl(tryfirst=True, optionalhook=True)
 def pytest_configure_node(node) -> None:
     """xdist master: assign each worker a unique last-running file path."""
     # Only runs in the xdist master process.
@@ -98,7 +98,7 @@ def pytest_configure_node(node) -> None:
     )
 
 
-@pytest.hookimpl(tryfirst=True)
+@pytest.hookimpl(tryfirst=True, optionalhook=True)
 def pytest_testnodedown(node, error) -> None:
     """xdist master: if a worker dies, append its last-running test into crash log."""
     if not error:

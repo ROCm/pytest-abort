@@ -116,7 +116,7 @@ If you want a “crash recovery” loop for `pytest -n ...`, you can use the inc
 
 ```bash
 pytest-abort-retry --max-runs 5 --clear-crash-log -- \
-  pytest -n 8 --max-worker-restart=50 --tb=short --maxfail=20 jax/tests jax/examples
+  pytest -n 8 --max-worker-restart=50 --tb=short --maxfail=20 tests examples
 ```
 
 Per-test timeout example (requires `pytest-timeout`):
@@ -125,7 +125,7 @@ Per-test timeout example (requires `pytest-timeout`):
 pytest-abort-retry --max-runs 5 --clear-crash-log -- \
   pytest -n 8 --max-worker-restart=50 --tb=short --maxfail=20 \
     --timeout=600 --timeout-method=thread \
-    jax/tests jax/examples
+    tests examples
 ```
 
 This will:
@@ -138,12 +138,24 @@ Note:
 - To avoid “wrong pytest binary / wrong environment” problems (missing `-n`, missing `--timeout`, etc.), the wrapper rewrites a leading `pytest ...` to run as `python -m pytest ...` using the wrapper’s interpreter.
 
 
+## Integration notes (outer runner)
+
+If you run pytest from an outer process (CI wrapper, custom runner, etc.), a common pattern is:
+
+- Add this package to the environment (editable install or wheel)
+- Set `PYTEST_ABORT_LAST_RUNNING_FILE` (or `PYTEST_ABORT_LAST_RUNNING_DIR` for xdist)
+- Produce per-run JSON/HTML artifacts with `pytest-json-report` and `pytest-html` (best-effort)
+- If a hard crash occurred, patch/repair the per-run artifacts from the outer process via `handle_abort(...)`
+- Before merging many HTML reports, sanitize `data-jsonblob` payloads so merge/HTML rendering stays robust
+
 ## How rocm-jax uses it
+
+The [`rocm-jax`](https://github.com/ROCm/rocm-jax) test runners use `pytest-abort` to attribute hard crashes to the last-running test and to keep pytest-html reports mergeable.
 
 ### `run_single_gpu.py`
 
-- Adds the `pytest-abort` repo directory to `PYTHONPATH` for the pytest subprocess
-- Enables the plugin via the installed `pytest11` entry point (no `-p` needed)
+- Ensures `pytest_abort` is importable by the pytest subprocess (either by installing `pytest-abort` into the environment, or by adding the repo checkout to `PYTHONPATH`)
+- Enables the plugin via the installed `pytest11` entry point (no `-p` needed when installed). If using `PYTHONPATH` only, load explicitly with `-p pytest_abort.plugin`.
 - Sets `PYTEST_ABORT_LAST_RUNNING_FILE` per test-file run (`logs/*_last_running.json`)
 - On crash: re-runs remaining tests in the same file using `--deselect <crashed-nodeid>`
 - Appends crash info into `*_log.json` + `*_log.html` using `pytest_abort.abort_handling.handle_abort(...)`

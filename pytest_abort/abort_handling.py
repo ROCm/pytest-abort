@@ -1,6 +1,6 @@
-"""Shared abort handling + report patching used by ROCm test runners.
+"""Shared abort handling + report patching used by outer test runners.
 
-This is *not* a pytest hook plugin module. It's a library module that runners
+This is not a pytest hook plugin module. It's a library module that runners
 import to:
   - parse crash marker files
   - append abort info into pytest-json-report + pytest-html artifacts
@@ -299,7 +299,7 @@ def append_abort_to_json(json_file: str, testfile: str, abort_info: Dict[str, An
             "created": current_time,
             "duration": abort_info.get("duration", 0),
             "exitcode": 1,
-            "root": "/rocm-jax/jax",
+            "root": os.getcwd(),
             "environment": {},
             "summary": {
                 "passed": 0,
@@ -480,10 +480,13 @@ def _update_html_json_data(html_content: str, testfile: str, abort_info: Dict[st
             f"GPU ID: {gpu_id_clean}"
         )
 
+        # Preserve an existing nodeid-like identifier; otherwise,
+        # synthesize one anchored to the current testfile (without assuming a
+        # particular tests/ root directory).
         testid_display = (
             test_name
-            if ("::" in test_name and test_name.startswith("tests/"))
-            else f"tests/{testfile}.py::{test_name}"
+            if ("::" in test_name and test_name.split("::", 1)[0].endswith(".py"))
+            else f"{testfile}.py::{test_name}"
         )
 
         new_test = {
@@ -649,8 +652,8 @@ def _create_new_html_file(html_file: str, testfile: str, abort_info: Dict[str, A
                 "test_0": {
                     "testId": (
                         test_name
-                        if ("::" in test_name and test_name.startswith("tests/"))
-                        else f"tests/{testfile}.py::{test_name}"
+                        if ("::" in test_name and test_name.split("::", 1)[0].endswith(".py"))
+                        else f"{testfile}.py::{test_name}"
                     ),
                     "id": "test_0",
                     "log": log_msg,
