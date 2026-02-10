@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import List
 
 from pytest_abort.retry import main as retry_main
 
 
-def test_retry_wrapper_deselects_crashed_then_succeeds(tmp_path, monkeypatch):
+def test_retry_wrapper_deselects_crashed_then_succeeds(tmp_path, capsys, monkeypatch):
     """
     Simulate a run where one test "crashes" and prevents the rest of the file
     from completing. The retry wrapper should then re-run pytest with a
@@ -62,9 +63,16 @@ def test_retry_wrapper_deselects_crashed_then_succeeds(tmp_path, monkeypatch):
             "tests/test_mod.py",
         ]
     )
+    out = capsys.readouterr().out
+    if os.environ.get("PYTEST_ABORT_SHOW_RETRY_SUMMARY") == "1":
+        # capsys captures even under `-s`; explicitly emit for debugging.
+        with capsys.disabled():
+            print(out, end="")
 
     assert rc == 0
     assert len(calls) == 2
+    assert "pytest-abort-retry summary" in out
+    assert crashed_nodeid in out
     # Confirm (via our run log) that after the crash, the "post-crash" test ran and passed.
     records = [
         json.loads(line)

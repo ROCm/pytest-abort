@@ -31,8 +31,10 @@ def _read_crashed_nodeids_jsonl(path: Path) -> List[str]:
         except json.JSONDecodeError:
             continue
         nid = rec.get("nodeid")
-        if isinstance(nid, str) and nid:
-            nodeids.append(nid)
+        if isinstance(nid, str):
+            nid = nid.strip()
+            if nid:
+                nodeids.append(nid)
     return nodeids
 
 
@@ -52,6 +54,19 @@ def _build_deselect_args(nodeids: Iterable[str]) -> List[str]:
     for nid in nodeids:
         args.append(f"--deselect={nid}")
     return args
+
+
+def _print_final_summary(*, crash_log: Path, start_count: int) -> None:
+    crashed = _unique_keep_order(_read_crashed_nodeids_jsonl(crash_log))
+    new_since_start = max(len(crashed) - start_count, 0)
+    print("\n=== pytest-abort-retry summary ===")
+    print(f"Crash log: {crash_log}")
+    print(f"Crashed nodeids (unique): total={len(crashed)} (new since start={new_since_start})")
+    if not crashed:
+        return
+    print("\nCrashed nodeids:")
+    for nid in crashed:
+        print(nid)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -108,6 +123,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     deselect_nodeids: List[str] = []
     start_count = len(_read_crashed_nodeids_jsonl(crash_log))
+    last_rc = 2
 
     for run_idx in range(1, args.max_runs + 1):
         cmd = list(args.pytest_cmd) + _build_deselect_args(deselect_nodeids)
@@ -115,6 +131,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("Command:", " ".join(cmd))
 
         rc = subprocess.call(cmd)
+        last_rc = rc
 
         crashed = _unique_keep_order(_read_crashed_nodeids_jsonl(crash_log))
         if crashed:
@@ -126,15 +143,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         # If no crashes recorded at all, or no new crashes were added since previous iteration,
         # stop retrying. (We still return the pytest return code.)
         if run_idx == 1 and not crashed:
+            _print_final_summary(crash_log=crash_log, start_count=start_count)
             return rc
 
         if run_idx > 1:
             prev = set(deselect_nodeids)
             curr = set(crashed)
             if curr == prev:
+                _print_final_summary(crash_log=crash_log, start_count=start_count)
                 return rc
 
-    return rc
+    _print_final_summary(crash_log=crash_log, start_count=start_count)
+    return last_rc
 
 
 if __name__ == "__main__":
