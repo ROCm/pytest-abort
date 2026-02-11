@@ -112,7 +112,7 @@ Notes:
 
 ## Postprocessing reports from the crash log
 
-If your outer runner produces “final” reports (JSON/HTML/CSV) but pytest hard-crashed in the middle, you can patch those reports **after the fact** using the crashed-tests JSONL log.
+If your outer runner produces "final" reports (JSON/HTML/CSV) but pytest hard-crashed in the middle, you can patch those reports **after the fact** using the crashed-tests JSONL log.
 
 This is useful when:
 - some test sessions crashed before `pytest-json-report` / `pytest-html` / `pytest-csv` could fully write their output, or
@@ -146,7 +146,7 @@ pytest-abort-postprocess \
 
 What it does:
 - Reads `crashed_tests.jsonl` and collects **unique** `nodeid`s (order-preserving, whitespace-trimmed).
-- Appends a synthetic “crashed/failed” entry for each missing `nodeid` into:
+- Appends a synthetic "crashed/failed" entry for each missing `nodeid` into:
   - the `pytest-json-report` JSON file (creates the file if missing)
   - the `pytest-html` report (creates a minimal standalone report if missing)
   - the `pytest-csv` report (creates the file + header if missing)
