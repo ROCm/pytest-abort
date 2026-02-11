@@ -110,6 +110,71 @@ Notes:
 - In xdist, the **master process** appends to the crashed-tests log when a worker goes down.
 - In runner flows (like `run_single_gpu.py`), `handle_abort(...)` appends to the crashed-tests log if `PYTEST_ABORT_CRASHED_TESTS_LOG` is set.
 
+## Postprocessing reports from the crash log
+
+If your outer runner produces “final” reports (JSON/HTML/CSV) but pytest hard-crashed in the middle, you can patch those reports **after the fact** using the crashed-tests JSONL log.
+
+This is useful when:
+- some test sessions crashed before `pytest-json-report` / `pytest-html` / `pytest-csv` could fully write their output, or
+- you want to attribute crashes from multiple runs into a single consolidated report artifact.
+
+### CLI: `pytest-abort-postprocess`
+
+When `pytest-abort` is installed, this repo exposes:
+- `pytest-abort-postprocess` (entry point: `pytest_abort.postprocess:main`)
+
+Usage (paths are optional; crash log is required):
+
+```bash
+export PYTEST_ABORT_CRASHED_TESTS_LOG=/path/to/crashed_tests.jsonl
+
+pytest-abort-postprocess \
+  --json-report /path/to/tests-report.json \
+  --html-report /path/to/tests-report.html \
+  --csv-report /path/to/tests-report.csv
+```
+
+Or explicitly:
+
+```bash
+pytest-abort-postprocess \
+  --crash-log /path/to/crashed_tests.jsonl \
+  --json-report /path/to/tests-report.json \
+  --html-report /path/to/tests-report.html \
+  --csv-report /path/to/tests-report.csv
+```
+
+What it does:
+- Reads `crashed_tests.jsonl` and collects **unique** `nodeid`s (order-preserving, whitespace-trimmed).
+- Appends a synthetic “crashed/failed” entry for each missing `nodeid` into:
+  - the `pytest-json-report` JSON file (creates the file if missing)
+  - the `pytest-html` report (creates a minimal standalone report if missing)
+  - the `pytest-csv` report (creates the file + header if missing)
+- Is intended to be **idempotent** (running it again should not duplicate entries).
+
+Crash-log format:
+- JSONL (one JSON object per line)
+- Must contain at least `{"nodeid": "path/to/test_file.py::test_name"}` per crash
+- Optional fields like `crash_time` / `duration` / `reason` / `gpu_id` are preserved when present
+
+### Library API
+
+The CLI is a thin wrapper around:
+- `pytest_abort.abort_handling.postprocess_reports_from_crash_log(...)`
+
+If you prefer:
+
+```python
+from pytest_abort.abort_handling import postprocess_reports_from_crash_log
+
+postprocess_reports_from_crash_log(
+    "/path/to/crashed_tests.jsonl",
+    json_report_file="/path/to/tests-report.json",
+    html_report_file="/path/to/tests-report.html",
+    csv_report_file="/path/to/tests-report.csv",
+)
+```
+
 ## Crash recovery for xdist runs (optional helper)
 
 If you want a “crash recovery” loop for `pytest -n ...`, you can use the included outer-process wrapper:
