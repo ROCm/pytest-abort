@@ -9,6 +9,7 @@ import to:
 
 from __future__ import annotations
 
+import csv
 import glob
 import html
 import json
@@ -17,7 +18,7 @@ import re
 import traceback
 import unicodedata
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 from .crash_file import check_for_crash_file
 
@@ -725,3 +726,216 @@ def handle_abort(
     except Exception:  # pylint: disable=broad-exception-caught
         traceback.print_exc()
         return False
+
+
+def _nodeid_to_csv_fields(nodeid: str) -> Dict[str, str]:
+    """Best-effort mapping of a pytest nodeid into pytest-csv fields."""
+    # nodeid format: "path/to/test_file.py::TestCls::test_name[param]"
+    file_part = nodeid.split("::", 1)[0] if "::" in nodeid else ""
+    name_part = nodeid.split("::")[-1] if "::" in nodeid else nodeid
+    module_part = file_part.replace("/", ".").replace("\\", ".")
+    if module_part.endswith(".py"):
+        module_part = module_part[: -len(".py")]
+    return {"file": file_part, "name": name_part, "module": module_part}
+
+
+def _normalize_crash_record(rec: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a crash record into the fields used by report patchers."""
+    nodeid = (rec.get("nodeid") or "").strip() if isinstance(rec.get("nodeid"), str) else ""
+    test_name = rec.get("test_name")
+    if not isinstance(test_name, str) or not test_name.strip():
+        test_name = nodeid or "unknown_test"
+    test_name = test_name.strip()
+
+    # abort_handling expects abort_time, but crash log uses crash_time.
+    abort_time = rec.get("abort_time")
+    if not isinstance(abort_time, str) or not abort_time.strip():
+        abort_time = rec.get("crash_time", "")
+
+    out = dict(rec)
+    out["nodeid"] = nodeid or out.get("nodeid", "")
+    out["test_name"] = test_name
+    out["abort_time"] = abort_time
+    return out
+
+
+def append_abort_to_csv(csv_file: str, abort_info: Dict[str, Any]) -> None:
+    """Append a synthetic crash row to a pytest-csv report (best-effort)."""
+    nodeid = abort_info.get("nodeid") or abort_info.get("test_name") or ""
+    if not isinstance(nodeid, str) or not nodeid.strip():
+        return
+    nodeid = nodeid.strip()
+
+    os.makedirs(os.path.dirname(csv_file) or ".", exist_ok=True)
+
+    # Default header used by pytest-csv.
+    default_fields = [
+        "id",
+        "module",
+        "name",
+        "file",
+        "doc",
+        "markers",
+        "status",
+        "message",
+        "duration",
+    ]
+
+    existing_ids: Set[str] = set()
+    fieldnames = list(default_fields)
+
+    if os.path.exists(csv_file):
+        try:
+            with open(csv_file, "r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                if reader.fieldnames:
+                    fieldnames = list(reader.fieldnames)
+                for row in reader:
+                    rid = row.get("id") or row.get("nodeid") or ""
+                    if isinstance(rid, str) and rid.strip():
+                        existing_ids.add(rid.strip())
+        except OSError:
+            pass
+
+    if nodeid in existing_ids:
+        return
+
+    fields = _nodeid_to_csv_fields(nodeid)
+    reason = abort_info.get("reason", "Test aborted or crashed.")
+    if not isinstance(reason, str):
+        reason = str(reason)
+    duration = abort_info.get("duration", 0)
+    try:
+        duration_str = str(float(duration))
+    except Exception:  # pylint: disable=broad-exception-caught
+        duration_str = "0.0"
+
+    row = {k: "" for k in fieldnames}
+    if "id" in row:
+        row["id"] = nodeid
+    if "nodeid" in row:
+        row["nodeid"] = nodeid
+    if "module" in row:
+        row["module"] = fields["module"]
+    if "name" in row:
+        row["name"] = fields["name"]
+    if "file" in row:
+        row["file"] = fields["file"]
+    if "status" in row:
+        row["status"] = "failed"
+    if "outcome" in row:
+        row["outcome"] = "failed"
+    if "message" in row:
+        row["message"] = reason
+    if "duration" in row:
+        row["duration"] = duration_str
+
+    # Append row; create header if needed.
+    write_header = not os.path.exists(csv_file) or os.path.getsize(csv_file) == 0
+    with open(csv_file, "a", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
+
+def postprocess_reports_from_crash_log(
+    crash_log_file: str,
+    *,
+    json_report_file: Optional[str] = None,
+    html_report_file: Optional[str] = None,
+    csv_report_file: Optional[str] = None,
+) -> None:
+    """Patch reports with synthetic failures for crashed nodeids from crash_log_file."""
+    try:
+        with open(crash_log_file, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return
+
+    # Collect unique crashes in order.
+    seen: Set[str] = set()
+    crashes: list[Dict[str, Any]] = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(rec, dict):
+            continue
+        rec = _normalize_crash_record(rec)
+        nid = rec.get("nodeid", "")
+        if not isinstance(nid, str) or not nid.strip():
+            continue
+        nid = nid.strip()
+        if nid in seen:
+            continue
+        seen.add(nid)
+        crashes.append(rec)
+
+    if not crashes:
+        return
+
+    # Precompute existing nodeids to avoid duplicating entries.
+    existing_json_nodeids: Set[str] = set()
+    if json_report_file and os.path.exists(json_report_file):
+        try:
+            with open(json_report_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("tests"), list):
+                for t in data["tests"]:
+                    if isinstance(t, dict):
+                        nid = t.get("nodeid")
+                        if isinstance(nid, str) and nid.strip():
+                            existing_json_nodeids.add(nid.strip())
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+
+    existing_csv_ids: Set[str] = set()
+    if csv_report_file and os.path.exists(csv_report_file):
+        try:
+            with open(csv_report_file, "r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    rid = row.get("id") or row.get("nodeid") or ""
+                    if isinstance(rid, str) and rid.strip():
+                        existing_csv_ids.add(rid.strip())
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+
+    html_content = ""
+    if html_report_file and os.path.exists(html_report_file):
+        try:
+            with open(html_report_file, "r", encoding="utf-8") as f:
+                html_content = f.read()
+        except OSError:
+            html_content = ""
+
+    for rec in crashes:
+        nid = rec["nodeid"].strip()
+        # Derive a reasonable testfile fallback (used only when nodeid isn't file-qualified).
+        testfile = nid.split("::", 1)[0]
+        if testfile.endswith(".py"):
+            testfile = testfile[: -len(".py")]
+
+        if json_report_file and nid not in existing_json_nodeids:
+            append_abort_to_json(json_report_file, testfile=testfile, abort_info=rec)
+            existing_json_nodeids.add(nid)
+
+        if csv_report_file and nid not in existing_csv_ids:
+            append_abort_to_csv(csv_report_file, rec)
+            existing_csv_ids.add(nid)
+
+        if html_report_file:
+            # Best-effort dedupe: skip if the nodeid already appears in the HTML.
+            if html_content and nid in html_content:
+                continue
+            append_abort_to_html(html_report_file, testfile=testfile, abort_info=rec)
+            try:
+                with open(html_report_file, "r", encoding="utf-8") as f:
+                    html_content = f.read()
+            except OSError:
+                html_content = ""

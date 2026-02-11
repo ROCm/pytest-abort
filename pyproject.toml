@@ -4,7 +4,7 @@ build-backend = 'setuptools.build_meta'
 
 [project]
 name = 'pytest-abort'
-version = '0.1.0'
+version = '0.1.0.post2'
 description = 'Pytest plugin + helpers for attributing hard crashes (SIGSEGV/SIGABRT) to the last running test and keeping pytest-html reports mergeable.'
 readme = 'README.md'
 requires-python = '>=3.8'
@@ -32,6 +32,7 @@ keywords = [
 
 [project.scripts]
 pytest-abort-retry = 'pytest_abort.retry:main'
+pytest-abort-postprocess = 'pytest_abort.postprocess:main'
 
 [project.entry-points.pytest11]
 pytest_abort = 'pytest_abort.plugin'
